@@ -1,8 +1,17 @@
 // ==UserScript==
-// @name          Faction Bank AutoFill (bobbot)
+// @name         Faction Bank AutoFill (bobbot)
+// @namespace    http://tampermonkey.net/
+// @version      1.0
+// @description  Auto-fills the faction money form for a user with balance checks
+// @author       OgBob
+// @license      MIT
 // @match        https://www.torn.com/factions.php*
 // @grant        none
-// @version      "1.0"
+// @downloadURL  https://raw.githubusercontent.com/OgBobb/bankfill/main/BankFill.user.js
+// @updateURL    https://raw.githubusercontent.com/OgBobb/bankfill/main/BankFill.meta.js
+
+
+
 
 // ==/UserScript==
 
