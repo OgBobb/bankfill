@@ -1,14 +1,8 @@
 // ==UserScript==
-// @name         Faction Bank AutoFill (bobbot)
-// @namespace    http://tampermonkey.net/
-// @version      1.0
-// @description  Auto-fills the faction money form for a user with balance checks
-// @author       OgBob
-// @license      MIT
-// @match        https://www.torn.com/factions.php*
-// @grant        none
-// @downloadURL  https://raw.githubusercontent.com/OgBobb/bankfill/main/BankFill.user.js
-// @updateURL    https://raw.githubusercontent.com/OgBobb/bankfill/main/BankFill.meta.js
+// @name          Faction Bank AutoFill (bobbot)
+// @match         https://www.torn.com/factions.php*
+// @grant         none
+// @version       1.1
 // ==/UserScript==
 
 (async function () {
@@ -65,7 +59,7 @@
     async function waitForDropdownItem(matcher, timeoutMs = 5000) {
         const start = Date.now();
         while (Date.now() - start < timeoutMs) {
-            const items = [...document.querySelectorAll('div.dropdown-content > button.item')];
+            const items = [...document.querySelectorAll('button')];
             const match = items.find(item =>
                 item.textContent.toLowerCase().includes(matcher.toLowerCase()) ||
                 (item.getAttribute('aria-label') || '').toLowerCase().includes(matcher.toLowerCase())
