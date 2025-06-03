@@ -2,7 +2,7 @@
 // @name          Faction Bank AutoFill (bobbot)
 // @match         https://www.torn.com/factions.php*
 // @grant         none
-// @version       1.1
+// @version       1.2
 // ==/UserScript==
 
 (async function () {
@@ -60,11 +60,20 @@
         const start = Date.now();
         while (Date.now() - start < timeoutMs) {
             const items = [...document.querySelectorAll('button')];
-            const match = items.find(item =>
-                item.textContent.toLowerCase().includes(matcher.toLowerCase()) ||
-                (item.getAttribute('aria-label') || '').toLowerCase().includes(matcher.toLowerCase())
-            );
-            if (match) return match;
+            const filtered = items.filter(item => {
+                const label = item.getAttribute('aria-label') || item.textContent || "";
+                return label.toLowerCase().includes(matcher.toLowerCase());
+            });
+
+            if (filtered.length === 1) return filtered[0];
+
+            const exact = filtered.find(item => {
+                const label = item.getAttribute('aria-label') || item.textContent || "";
+                return label.trim().toLowerCase() === matcher.trim().toLowerCase();
+            });
+
+            if (exact) return exact;
+
             await new Promise(res => setTimeout(res, 300));
         }
         return null;
@@ -84,7 +93,7 @@
             el.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
             el.dispatchEvent(new InputEvent('input', { bubbles: true }));
             el.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
-            await new Promise(r => setTimeout(r, 100));
+            await new Promise(r => setTimeout(r, 150));  // Slower typing for Torn PDA
         }
     }
 
@@ -112,7 +121,7 @@
             log(`✅ Found and clicking dropdown: ${dropdownItem.textContent.trim()}`);
             dropdownItem.click();
 
-            // ✅ Wait for updated balance from player header
+            // ✅ Wait for updated balance
             let currentBalance = null;
             for (let i = 0; i < 30; i++) {
                 const balanceEl = [...document.querySelectorAll('span.nowrap___Egae2')].find(
@@ -127,6 +136,24 @@
                     }
                 }
                 await new Promise(r => setTimeout(r, 300));
+            }
+
+            // 🔁 Retry dropdown click once if balance still not found
+            if (currentBalance === null) {
+                log('🔁 Retrying dropdown click...');
+                dropdownItem.click();
+                await new Promise(r => setTimeout(r, 500));
+
+                const retryEl = [...document.querySelectorAll('span.nowrap___Egae2')].find(
+                    el => el.textContent.includes("current balance")
+                );
+                if (retryEl) {
+                    const text = retryEl.textContent.replace(/[`’]/g, "'").trim();
+                    const match = text.match(/\$([\d,]+)/);
+                    if (match) {
+                        currentBalance = parseInt(match[1].replace(/,/g, ''));
+                    }
+                }
             }
 
             if (currentBalance === null) {
