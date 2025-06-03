@@ -2,7 +2,7 @@
 // @name          Faction Bank AutoFill (bobbot)
 // @match        https://www.torn.com/factions.php*
 // @grant        none
-// @version      1.0
+// @version      "1.0"
 
 // ==/UserScript==
 
