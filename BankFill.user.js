@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Faction Bank AutoFill (bobbot)
 // @namespace    http://tampermonkey.net/
-// @version      1.4
+// @version      1.5
 // @description  Auto-fills the faction money form for a user with balance checks
 // @author       OgBob
 // @license      MIT
@@ -80,9 +80,7 @@
     async function simulateTyping(el, text) {
         el.focus();
         el.click();
-        await new Promise(r => setTimeout(r, 250));
         el.select();
-        document.execCommand("delete");
         el.value = '';
         el.dispatchEvent(new InputEvent('input', { bubbles: true }));
 
@@ -93,6 +91,9 @@
             el.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
             await new Promise(r => setTimeout(r, 100));
         }
+
+        // wait briefly to allow dropdown to populate
+        await new Promise(r => setTimeout(r, 500));
     }
 
     async function autoFill() {
@@ -106,9 +107,7 @@
 
         try {
             const input = await waitForSelector('input[name="searchAccount"]', 8000);
-            log('✅ Found player input, clicking and typing...');
-            input.click();
-            await new Promise(r => setTimeout(r, 100));
+            log('✅ Found player input, starting typing...');
             await simulateTyping(input, name);
 
             log('🔍 Waiting for dropdown to populate...');
@@ -121,9 +120,6 @@
             log(`✅ Found and clicking dropdown: ${dropdownItem.textContent.trim()}`);
             dropdownItem.click();
 
-            await new Promise(r => setTimeout(r, 400));
-
-            // ✅ Wait for updated balance from player header
             let currentBalance = null;
             for (let i = 0; i < 30; i++) {
                 const balanceEl = [...document.querySelectorAll('span.nowrap___Egae2')].find(
