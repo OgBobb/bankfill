@@ -9,10 +9,6 @@
 // @grant        none
 // @downloadURL  https://raw.githubusercontent.com/OgBobb/bankfill/main/BankFill.user.js
 // @updateURL    https://raw.githubusercontent.com/OgBobb/bankfill/main/BankFill.meta.js
-
-
-
-
 // ==/UserScript==
 
 (async function () {
