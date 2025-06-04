@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Faction Bank AutoFill (bobbot)
 // @namespace    http://tampermonkey.net/
-// @version      2.0
+// @version      2.1
 // @description  Auto-fills the faction money form for a user with balance checks
 // @author       OgBob
 // @license      MIT
@@ -79,9 +79,10 @@
     }
 
     async function simulateTyping(el, text) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         el.focus();
         el.click();
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise(r => setTimeout(r, 300));
 
         el.value = '';
         el.dispatchEvent(new InputEvent('input', { bubbles: true }));
@@ -95,10 +96,7 @@
         }
 
         el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.blur();
-        el.click();
-        await new Promise(r => setTimeout(r, 700));
-        console.log(`[AutoFill] Finished simulating: ${text}`);
+        await new Promise(r => setTimeout(r, 500));
     }
 
     async function autoFill() {
@@ -111,7 +109,7 @@
         log(`🚀 Starting autofill for name: ${name}, amount: ${amount}`);
 
         try {
-            const input = await waitForSelector('input[name="searchAccount"]', 8000);
+            const input = await waitForSelector('input[name="searchAccount"]', 10000);
             log('✅ Found player input, starting typing...');
             await simulateTyping(input, name);
 
@@ -171,7 +169,7 @@
 
     if (window.location.hash.includes('name=')) {
         log('📦 Script triggered. URL hash:', window.location.hash);
-        window.addEventListener('DOMContentLoaded', () => setTimeout(autoFill, 1500));
+        setTimeout(autoFill, 1200);
     } else {
         log('⏹️ Hash does not include `name=`, script will not run.');
     }
