@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Faction Bank AutoFill (bobbot)
 // @namespace    http://tampermonkey.net/
-// @version      2.5
+// @version      2.5.1
 // @description  Auto-fills the faction money form for a user, supporting both desktop and PDA skins
 // @author       OgBob
 // @license      MIT
@@ -91,8 +91,8 @@
             const items2 = Array.from(document.querySelectorAll('li.autocomplete-item'));
             const items3 = Array.from(document.querySelectorAll('div.ts-suggestion__item'));
             const items4 = Array.from(document.querySelectorAll('li.ts-suggestion-item'));
-
             const candidates = [...items1, ...items2, ...items3, ...items4];
+
             for (const item of candidates) {
                 if (item.offsetParent === null) continue;
                 const txt = item.textContent.trim().toLowerCase();
@@ -139,11 +139,11 @@
     /**
      * Main autofill routine supporting both desktop and PDA:
      *   1) Read `name` and `amount` from the URL hash.
-     *   2) Attempt to find desktop input[name="searchAccount"]; if not found, find PDA input[name="userword"].
+     *   2) Attempt to find desktop input[name="searchAccount"]; if not found, find PDA input[placeholder="Search player..."].
      *   3) Simulate typing the full `name`.
      *   4) Wait for the autocomplete dropdown and click the matching entry.
      *   5) Read “current balance” from <span class="nowrap___Egae2">…</span> and compare to `amount`.
-     *   6) If balance is sufficient, fill the money‐input field (desktop: input.input-money; PDA fallback: input[name="amount"]).
+     *   6) If balance is sufficient, fill the money‐input field (desktop: input.input-money; PDA fallback: input[name="money"]).
      *   7) Leaves you ready to click “GIVE MONEY.”
      */
     async function autoFill() {
@@ -161,9 +161,9 @@
                 input = await waitForSelector('input[name="searchAccount"]', 8000);
                 log('✅ Found desktop input: searchAccount');
             } catch {
-                // Fallback to PDA “userword”
-                input = await waitForSelector('input[name="userword"]', 8000);
-                log('✅ Found PDA input: userword');
+                // Fallback to PDA “Search player...” placeholder
+                input = await waitForSelector('input[placeholder="Search player..."]', 8000);
+                log('✅ Found PDA input: Search player...');
             }
 
             // 3) Type the name into that input
@@ -215,14 +215,14 @@
             log(`✅ Balance OK – filling $${requestedAmount.toLocaleString()}`);
 
             // 7) Fill the money‐input field:
-            //    Desktop uses <input class="input-money">; PDA might use <input name="amount">
+            //    Desktop uses <input class="input-money">; PDA fallback uses <input name="money">
             let amountInput;
             try {
                 amountInput = await waitForSelector('input.input-money', 5000);
                 log('✅ Found desktop money input: input.input-money');
             } catch {
-                amountInput = await waitForSelector('input[name="amount"]', 5000);
-                log('✅ Found PDA money input: input[name="amount"]');
+                amountInput = await waitForSelector('input[name="money"]', 5000);
+                log('✅ Found PDA money input: money');
             }
             amountInput.focus();
             amountInput.value = amount;
