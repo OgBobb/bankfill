@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Faction Bank AutoFill (bobbot)
 // @namespace    http://tampermonkey.net/
-// @version      1.6
+// @version      1.7
 // @description  Auto-fills the faction money form for a user with balance checks
 // @author       OgBob
 // @license      MIT
@@ -108,7 +108,9 @@
 
         try {
             const input = await waitForSelector('input[name="searchAccount"]', 8000);
-            log('✅ Found player input, starting typing...');
+            log('✅ Found player input, clicking and typing...');
+            input.click();
+            await new Promise(r => setTimeout(r, 250));
             await simulateTyping(input, name);
 
             log('🔍 Waiting for dropdown to populate...');
