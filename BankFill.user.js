@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Faction Bank AutoFill (bobbot)
 // @namespace    http://tampermonkey.net/
-// @version      1.7
+// @version      1.8
 // @description  Auto-fills the faction money form for a user with balance checks
 // @author       OgBob
 // @license      MIT
@@ -9,7 +9,6 @@
 // @grant        none
 // @downloadURL  https://raw.githubusercontent.com/OgBobb/bankfill/main/BankFill.user.js
 // @updateURL    https://raw.githubusercontent.com/OgBobb/bankfill/main/BankFill.meta.js
-
 // ==/UserScript==
 
 (async function () {
@@ -78,11 +77,10 @@
     }
 
     async function simulateTyping(el, text) {
-        el.click();
-        await new Promise(r => setTimeout(r, 350));
         el.focus();
-        el.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-        el.select();
+        el.click();
+        await new Promise(r => setTimeout(r, 200));
+
         el.value = '';
         el.dispatchEvent(new InputEvent('input', { bubbles: true }));
 
@@ -91,10 +89,11 @@
             el.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
             el.dispatchEvent(new InputEvent('input', { bubbles: true }));
             el.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
-            await new Promise(r => setTimeout(r, 100));
+            await new Promise(r => setTimeout(r, 120));
         }
 
-        log(`⌨️ Simulated typing: "${text}"`);
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        console.log(`[AutoFill] Finished simulating: ${text}`);
     }
 
     async function autoFill() {
@@ -108,15 +107,13 @@
 
         try {
             const input = await waitForSelector('input[name="searchAccount"]', 8000);
-            log('✅ Found player input, clicking and typing...');
-            input.click();
-            await new Promise(r => setTimeout(r, 250));
+            log('✅ Found player input, starting typing...');
             await simulateTyping(input, name);
 
             log('🔍 Waiting for dropdown to populate...');
             const dropdownItem = await waitForDropdownItem(name);
             if (!dropdownItem) {
-                log('❌ Could not find a matching dropdown item.');
+                showWarning(`❌ Could not find dropdown match for ${name}`);
                 return;
             }
 
