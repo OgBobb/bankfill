@@ -1,69 +1,64 @@
 // ==UserScript==
 // @name         Faction Bank AutoFill (bobbot)
 // @namespace    http://tampermonkey.net/
-// @version      2.6.2
-// @description  Auto-fills the faction money form for a user with balance checks
+// @version      2.6.3
+// @description  Auto-fills the faction money form reliably, even in PDA/mobile mode.
 // @author       OgBob
 // @license      MIT
 // @match        https://www.torn.com/factions.php*
 // @grant        none
-// @downloadURL  https://raw.githubusercontent.com/OgBobb/bankfill/main/BankFill.user.js
-// @updateURL    https://raw.githubusercontent.com/OgBobb/bankfill/main/BankFill.meta.js
 // ==/UserScript==
 
 (async function () {
     'use strict';
 
-    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
     const urlParams = new URLSearchParams(location.hash.replace('#', '?'));
     const targetName = urlParams.get('name') || 'OgBob';
     const targetAmount = urlParams.get('amount') || '1000000';
-
     console.log(`[AutoFill] 🚀 Starting with name: ${targetName}, amount: $${targetAmount}`);
 
-    async function waitForElement(selector, max = 20, delay = 250) {
-        for (let i = 0; i < max; i++) {
-            const el = document.querySelector(selector);
-            if (el) return el;
-            await sleep(delay);
+    // Wait until the bank tab is actually visible (not just in URL hash)
+    async function waitForBankTab() {
+        for (let i = 0; i < 30; i++) {
+            const input = document.querySelector('input[name="user"], input[placeholder*="player"], .faction-controls input');
+            if (input && input.offsetParent !== null) return input;
+            await sleep(500);
         }
-        throw new Error(`⛔ Element not found: ${selector}`);
+        throw new Error("⛔ Bank input never became visible.");
     }
 
     try {
-        const userInput = await waitForElement('input[name="user"]');
+        const userInput = await waitForBankTab();
 
-        // ⬇️ Force "real" interaction
+        // Wake it up like a user
         userInput.scrollIntoView({ behavior: 'instant', block: 'center' });
         userInput.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
         userInput.focus();
         userInput.click();
-        await sleep(300); // Let Torn initialize dropdown listeners
+        await sleep(400);
 
+        // Type the name
         userInput.value = '';
         for (const char of targetName) {
             userInput.value += char;
             userInput.dispatchEvent(new Event('input', { bubbles: true }));
-            await sleep(90);
+            await sleep(100);
         }
 
-        await sleep(600); // Wait for dropdown to populate
+        await sleep(600);
 
         const dropdownItems = Array.from(document.querySelectorAll('.dropdown__item, .autocomplete__result'));
         const match = dropdownItems.find(el => el?.innerText?.includes(targetName));
-
-        if (!match) {
-            console.warn("[AutoFill] ❌ Could not find a matching dropdown item.");
-            return;
-        }
-
+        if (!match) return console.warn("[AutoFill] ⚠️ Dropdown match not found.");
         match.click();
-        console.log("[AutoFill] ✅ Selected user");
+        console.log("[AutoFill] ✅ Selected name from dropdown");
 
         await sleep(300);
 
-        const amountInput = await waitForElement('input[name="money"]');
+        const amountInput = document.querySelector('input[name="money"]');
+        if (!amountInput) throw new Error("⛔ Amount input not found.");
         amountInput.focus();
         amountInput.value = targetAmount;
         amountInput.dispatchEvent(new Event('input', { bubbles: true }));
