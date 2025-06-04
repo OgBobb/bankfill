@@ -1,14 +1,12 @@
 // ==UserScript==
 // @name         Faction Bank AutoFill (bobbot)
 // @namespace    http://tampermonkey.net/
-// @version      3.2
+// @version      3.3
 // @description  Auto-fills the faction money form for a user, supporting both desktop and PDA skins
 // @author       OgBob
 // @license      MIT
 // @match        *://*.torn.com/factions.php*
 // @grant        none
-// @downloadURL  https://raw.githubusercontent.com/OgBobb/bankfill/main/BankFill.user.js
-// @updateURL    https://raw.githubusercontent.com/OgBobb/bankfill/main/BankFill.meta.js
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -46,11 +44,6 @@
         document.body.appendChild(warn);
     }
 
-    /**
-     * Parses window.location.hash (everything after '#') into a key/value object.
-     * Example: "#/tab=controls&name=OgBob&amount=1000000"
-     *   → { tab: "controls", name: "OgBob", amount: "1000000" }
-     */
     function getParamsFromHash() {
         const raw = window.location.hash.replace(/^#\/?/, '');
         const params = {};
@@ -60,10 +53,6 @@
         return params;
     }
 
-    /**
-     * Waits up to `timeoutMs` ms for document.querySelector(selector) to return a non-null element.
-     * Throws if timeout elapses without finding anything.
-     */
     async function waitForSelector(selector, timeoutMs = DEFAULT_TIMEOUT) {
         const start = Date.now();
         while (Date.now() - start < timeoutMs) {
@@ -74,16 +63,6 @@
         throw new Error(`Timeout waiting for selector: ${selector}`);
     }
 
-    /**
-     * Looks for a visible dropdown item, trying multiple selectors:
-     *   1) div.dropdown-content > button.item          (desktop)
-     *   2) li.autocomplete-item                        (legacy UI)
-     *   3) div.ts-suggestion__item                     (newer UI)
-     *   4) li.ts-suggestion-item                       (alternative)
-     *
-     * Returns the first match whose textContent (lowercased) includes `matcher` (lowercased),
-     * or null if none appear within `timeoutMs`.
-     */
     async function waitForDropdownItem(matcher, timeoutMs = 7000) {
         const start = Date.now();
         while (Date.now() - start < timeoutMs) {
@@ -91,7 +70,6 @@
             const items2 = Array.from(document.querySelectorAll('li.autocomplete-item'));
             const items3 = Array.from(document.querySelectorAll('div.ts-suggestion__item'));
             const items4 = Array.from(document.querySelectorAll('li.ts-suggestion-item'));
-
             const candidates = [...items1, ...items2, ...items3, ...items4];
             for (const item of candidates) {
                 if (item.offsetParent === null) continue;
@@ -105,15 +83,6 @@
         return null;
     }
 
-    /**
-     * Simulates “typing” into the input `el` by:
-     *   1) Clicking its wrapper (if present) to focus.
-     *   2) Clearing any existing value.
-     *   3) For each character, appending to el.value and dispatching keydown → input → keyup.
-     *   4) Finally dispatching a “change” event.
-     *
-     * Waits small delays so Torn’s autocomplete logic can run.
-     */
     async function simulateTyping(el, text) {
         const wrapper = el.closest('.inputWrapper') || el;
         wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -136,16 +105,6 @@
         await new Promise((r) => setTimeout(r, 700));
     }
 
-    /**
-     * Main autofill routine supporting both desktop and PDA:
-     *   1) Read `name` and `amount` from the URL hash.
-     *   2) Attempt to find desktop input[name="searchAccount"]; if not found, find PDA input[name="userword"].
-     *   3) Simulate typing the full `name`.
-     *   4) Wait for the autocomplete dropdown and click the matching entry.
-     *   5) Read “current balance” from <span class="nowrap___Egae2">…</span> and compare to `amount`.
-     *   6) If balance is sufficient, fill the money‐input field (desktop: input.input-money; PDA fallback: input[name="amount"]).
-     *   7) Leaves you ready to click “GIVE MONEY.”
-     */
     async function autoFill() {
         const { name, amount } = getParamsFromHash();
         if (!name || !amount) {
@@ -156,21 +115,17 @@
         log(`🚀 Starting autofill for name: ${name}, amount: ${amount}`);
         try {
             let input;
-            // 2) Try desktop “searchAccount” first:
             try {
                 input = await waitForSelector('input[name="searchAccount"]', 8000);
                 log('✅ Found desktop input: searchAccount');
             } catch {
-                // Fallback to PDA “userword”
                 input = await waitForSelector('input[name="userword"]', 8000);
                 log('✅ Found PDA input: userword');
             }
 
-            // 3) Type the name into that input
             log('🔤 Simulating typing into:', input);
             await simulateTyping(input, name);
 
-            // 4) Wait for and click the matching dropdown item
             log('🔍 Waiting for dropdown to populate…');
             const dropdownItem = await waitForDropdownItem(name, 7000);
             if (!dropdownItem) {
@@ -180,15 +135,13 @@
             log(`✅ Found dropdown item, clicking → ${dropdownItem.textContent.trim()}`);
             dropdownItem.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 
-            // 5) After clicking, wait for “current balance” and parse it
             let currentBalance = null;
             for (let i = 0; i < 30; i++) {
-                const balanceEl = Array.from(
-                    document.querySelectorAll('span.nowrap___Egae2')
-                ).find((el) => el.textContent.includes('current balance'));
+                const balanceEl = Array.from(document.querySelectorAll('span, p')).find(
+                    el => el.textContent.includes("current balance") && /\$\d/.test(el.textContent)
+                );
                 if (balanceEl) {
-                    const text = balanceEl.textContent.replace(/[`’]/g, "'").trim();
-                    const match = text.match(/\$([\d,]+)/);
+                    const match = balanceEl.textContent.match(/\$([\d,]+)/);
                     if (match) {
                         currentBalance = parseInt(match[1].replace(/,/g, ''), 10);
                         break;
@@ -204,18 +157,15 @@
             }
             log(`💲 Detected current balance = $${currentBalance.toLocaleString()}`);
 
-            // 6) Compare requested amount
             const requestedAmount = parseInt(amount.replace(/,/g, ''), 10);
-            if (requestedAmount > currentBalance) {
-                const msg = `⛔ STOPPED: Trying to send $${requestedAmount.toLocaleString()}, but only $${currentBalance.toLocaleString()} available.`;
+            if (!requestedAmount || requestedAmount > currentBalance) {
+                const msg = `⛔ STOPPED: Trying to send $${amount}, but only $${currentBalance.toLocaleString()} available.`;
                 log(msg);
                 showWarning(msg);
                 return;
             }
             log(`✅ Balance OK – filling $${requestedAmount.toLocaleString()}`);
 
-            // 7) Fill the money‐input field:
-            //    Desktop uses <input class="input-money">; PDA might use <input name="amount">
             let amountInput;
             try {
                 amountInput = await waitForSelector('input.input-money', 5000);
@@ -224,6 +174,7 @@
                 amountInput = await waitForSelector('input[name="amount"]', 5000);
                 log('✅ Found PDA money input: input[name="amount"]');
             }
+
             amountInput.focus();
             amountInput.value = amount;
             amountInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -234,7 +185,6 @@
         }
     }
 
-    // Run on initial page load if the hash contains “name=”
     window.addEventListener('load', () => {
         if (window.location.hash.includes('name=')) {
             log('📦 Script triggered. URL hash =', window.location.hash);
@@ -244,7 +194,6 @@
         }
     });
 
-    // Also re‐run if the hash ever changes (e.g. clicking a link that updates the fragment)
     window.addEventListener('hashchange', () => {
         if (window.location.hash.includes('name=')) {
             log('🔄 Hash changed. New hash =', window.location.hash);
