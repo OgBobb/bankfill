@@ -1,95 +1,90 @@
 // ==UserScript==
-// @name         Faction Bank AutoFill (Bobbot)
+// @name         Torn PDA Faction Bank AutoFill
 // @namespace    http://tampermonkey.net/
-// @version      1.2.5
-// @description  Autofills name + balance in faction bank, working on PDA and desktop
-// @author       OgBob
+// @version      1.2.6
+// @description  Auto-fills the faction banking form (PDA compatible)
 // @match        https://www.torn.com/factions.php*
 // @grant        none
 // ==/UserScript==
 
-(async function () {
+(function () {
     'use strict';
 
     const targetName = "OgBob";
-    const balanceRegex = /current balance is \$([\d,]+)/i;
-    const log = (...args) => console.log("[AutoFill]", ...args);
-    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const maxWait = 10000;
 
-    async function waitForInput(selector, timeout = 10000) {
+    function log(...args) {
+        console.log("[AutoFill]", ...args);
+    }
+
+    function sleep(ms) {
+        return new Promise(res => setTimeout(res, ms));
+    }
+
+    async function waitForInput(selector, timeout = maxWait) {
         const start = Date.now();
         while (Date.now() - start < timeout) {
             const el = document.querySelector(selector);
             if (el) return el;
-            await sleep(200);
+            await sleep(100);
+        }
+        throw new Error(`Timeout waiting for ${selector}`);
+    }
+
+    async function waitForDropdownItem(name, timeout = 5000) {
+        const start = Date.now();
+        while (Date.now() - start < timeout) {
+            const items = [...document.querySelectorAll('[class*=userAutocompleteItem]')];
+            const match = items.find(i => i.textContent.includes(name));
+            if (match) return match;
+            await sleep(100);
         }
         return null;
     }
 
-    async function autofill() {
+    async function runAutoFill() {
         log("🚀 Autofill starting");
 
-        // Fill name
-        const nameInput = await waitForInput('input[name=searchAccount]');
-        if (!nameInput) return log("❌ Name input not found");
-
+        // Find the name input
+        const nameInput = await waitForInput('input.userAutocomplete___xqlGt');
         nameInput.focus();
         nameInput.value = targetName;
+
+        // Trigger React to notice input change
         nameInput.dispatchEvent(new Event('input', { bubbles: true }));
         log("✅ Name filled");
 
-        await sleep(1000); // Wait for dropdown
-
-        const items = [...document.querySelectorAll('[class*=userAutocompleteItem]')];
-        const match = items.find(i => i.textContent.includes(targetName));
-        if (match) {
-            match.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-            match.click();
+        // Wait for dropdown to appear and pick item
+        const dropdownItem = await waitForDropdownItem(targetName);
+        if (dropdownItem) {
+            dropdownItem.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            dropdownItem.click();
             log("✅ Selected from dropdown");
         } else {
             log("❌ Dropdown match not found");
         }
 
-        // Wait for balance info to load
-        await sleep(1500);
-        const textNodes = [...document.querySelectorAll("body *")]
-            .map(el => el.textContent)
-            .filter(text => text.includes("current balance"));
+        // Attempt to find and fill balance
+        const balanceSpan = [...document.querySelectorAll("span, p")]
+            .find(e => e.textContent.includes("current balance is $"));
+        if (!balanceSpan) return log("❌ Balance not found");
 
-        const balanceText = textNodes.find(t => t.includes(targetName));
-        if (!balanceText) return log("❌ Balance not found");
+        const match = balanceSpan.textContent.match(/\$([\d,]+)/);
+        if (!match) return log("❌ Could not extract balance");
+        const balance = match[1].replace(/,/g, "");
 
-        const matchBal = balanceText.match(balanceRegex);
-        if (!matchBal) return log("❌ Could not extract balance");
+        const moneyInput = document.querySelector("input.input-money");
+        if (!moneyInput) return log("❌ Money input not found");
 
-        const raw = matchBal[1].replace(/,/g, '');
-        const amount = parseInt(raw, 10);
-        log(`✅ Found balance: $${amount.toLocaleString()}`);
-
-        const amountInput = await waitForInput('input.input-money');
-        if (!amountInput) return log("❌ Amount input not found");
-
-        amountInput.focus();
-        amountInput.value = amount.toString();
-        amountInput.dispatchEvent(new Event('input', { bubbles: true }));
-        log("✅ Amount filled");
-
-        if (amount > 50000000) {
-            const popup = document.createElement("div");
-            popup.innerText = `⚠️ $${amount.toLocaleString()} — OVERDRAW ALERT`;
-            popup.style.position = "fixed";
-            popup.style.bottom = "20px";
-            popup.style.left = "20px";
-            popup.style.background = "red";
-            popup.style.color = "white";
-            popup.style.padding = "10px";
-            popup.style.zIndex = "99999";
-            popup.style.fontSize = "18px";
-            popup.style.borderRadius = "8px";
-            document.body.appendChild(popup);
-            log("❗ Overdraw warning displayed");
-        }
+        moneyInput.value = balance;
+        moneyInput.dispatchEvent(new Event("input", { bubbles: true }));
+        log(`✅ Balance filled: $${balance}`);
     }
 
-    window.addEventListener("load", () => setTimeout(autofill, 1500));
+    // Wait for DOM to stabilize and run
+    window.addEventListener("load", () => {
+        setTimeout(() => {
+            runAutoFill().catch(e => log("❌ Script error:", e));
+        }, 1000);
+    });
 })();
