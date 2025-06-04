@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Faction Bank AutoFill (bobbot)
 // @namespace    http://tampermonkey.net/
-// @version      2.3
+// @version      2.4
 // @description  Auto-fills the faction money form for a user with balance checks
 // @author       OgBob
 // @license      MIT
@@ -62,14 +62,21 @@
         throw new Error(`Timeout: ${selector}`);
     }
 
+    /**
+     * Look for any visible dropdown <button> whose text includes `matcher`
+     * (case‐insensitive). Returns the first match, or null if none show up.
+     */
     async function waitForDropdownItem(matcher, timeoutMs = 7000) {
         const start = Date.now();
         while (Date.now() - start < timeoutMs) {
             const items = [...document.querySelectorAll('div.dropdown-content > button.item')];
             for (const item of items) {
-                const visible = item.offsetParent !== null;
-                const matchText = item.textContent.trim().toLowerCase();
-                if (visible && matchText.includes(matcher.toLowerCase())) {
+                // Only consider items that are actually visible
+                if (item.offsetParent === null) continue;
+
+                // Use "includes" (case‐insensitive) instead of strict equality
+                const txt = item.textContent.trim().toLowerCase();
+                if (txt.includes(matcher.toLowerCase())) {
                     return item;
                 }
             }
@@ -96,6 +103,7 @@
             await new Promise(r => setTimeout(r, 100));
         }
 
+        // Fire a change event once typing is done
         el.dispatchEvent(new Event('change', { bubbles: true }));
         await new Promise(r => setTimeout(r, 700));
     }
@@ -124,13 +132,17 @@
             log(`✅ Found and clicking dropdown: ${dropdownItem.textContent.trim()}`);
             dropdownItem.click();
 
+            // Wait for the “current balance” text under the player header
             let currentBalance = null;
             for (let i = 0; i < 30; i++) {
                 const balanceEl = [...document.querySelectorAll('span.nowrap___Egae2')].find(
                     el => el.textContent.includes("current balance")
                 );
                 if (balanceEl) {
-                    const text = balanceEl.textContent.replace(/[`’]/g, "'").trim();
+                    const text = balanceEl
+                        .textContent
+                        .replace(/[`’]/g, "'")
+                        .trim();
                     const match = text.match(/\$([\d,]+)/);
                     if (match) {
                         currentBalance = parseInt(match[1].replace(/,/g, ''));
