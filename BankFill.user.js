@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Faction Bank Autofill (PDA compatible - no dropdown click)
+// @name         Faction Bank Autofill (bobbot)
 // @namespace    http://tampermonkey.net/
 // @version      2.9
 // @description  Fill name + amount on Torn PDA without clicking dropdown
