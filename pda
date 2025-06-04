@@ -1,87 +1,95 @@
 // ==UserScript==
-// @name         Faction Bank AutoFill (Dropdown Fix)
+// @name         Faction Bank AutoFill (Bobbot)
 // @namespace    http://tampermonkey.net/
-// @version      1.2.4
-// @description  Auto-fills Torn faction bank form reliably with dropdown opening
+// @version      1.2.5
+// @description  Autofills name + balance in faction bank, working on PDA and desktop
+// @author       OgBob
 // @match        https://www.torn.com/factions.php*
 // @grant        none
-// @license      MIT
 // ==/UserScript==
 
 (async function () {
     'use strict';
 
-    const log = (...args) => console.log('[AutoFill]', ...args);
-    const sleep = ms => new Promise(res => setTimeout(res, ms));
     const targetName = "OgBob";
+    const balanceRegex = /current balance is \$([\d,]+)/i;
+    const log = (...args) => console.log("[AutoFill]", ...args);
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-    async function waitForElement(selectors, tries = 40, delay = 300) {
-        for (let i = 0; i < tries; i++) {
-            for (const sel of selectors) {
-                const el = document.querySelector(sel);
-                if (el) return el;
-            }
-            await sleep(delay);
+    async function waitForInput(selector, timeout = 10000) {
+        const start = Date.now();
+        while (Date.now() - start < timeout) {
+            const el = document.querySelector(selector);
+            if (el) return el;
+            await sleep(200);
         }
         return null;
     }
 
-    log("🚀 Autofill starting");
+    async function autofill() {
+        log("🚀 Autofill starting");
 
-    const nameInput = await waitForElement([
-        'input[name="user"]',
-        'input[name="searchAccount"]',
-        'input.playername',
-        'input[class*=userAutocomplete]'
-    ]);
+        // Fill name
+        const nameInput = await waitForInput('input[name=searchAccount]');
+        if (!nameInput) return log("❌ Name input not found");
 
-    if (!nameInput) return log("❌ Name input not found");
+        nameInput.focus();
+        nameInput.value = targetName;
+        nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+        log("✅ Name filled");
 
-    // Step 1: Try clicking the dropdown arrow to trigger list load
-    const dropdownToggle = nameInput.closest('div')?.querySelector('svg, .icon-down, .dropdown-arrow');
-    if (dropdownToggle) {
-        dropdownToggle.click();
-        log("📂 Clicked dropdown arrow");
-        await sleep(300); // Give it time to open
-    }
+        await sleep(1000); // Wait for dropdown
 
-    // Step 2: Fill the name
-    nameInput.focus();
-    nameInput.value = targetName;
-    nameInput.dispatchEvent(new Event("input", { bubbles: true }));
-    nameInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        const items = [...document.querySelectorAll('[class*=userAutocompleteItem]')];
+        const match = items.find(i => i.textContent.includes(targetName));
+        if (match) {
+            match.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            match.click();
+            log("✅ Selected from dropdown");
+        } else {
+            log("❌ Dropdown match not found");
+        }
 
-    log("✅ Name filled");
+        // Wait for balance info to load
+        await sleep(1500);
+        const textNodes = [...document.querySelectorAll("body *")]
+            .map(el => el.textContent)
+            .filter(text => text.includes("current balance"));
 
-    await sleep(500);
+        const balanceText = textNodes.find(t => t.includes(targetName));
+        if (!balanceText) return log("❌ Balance not found");
 
-    // Step 3: Try to find the balance
-    const amountInput = await waitForElement([
-        'input[class*="input-money"]',
-        'input[type="text"].money'
-    ]);
+        const matchBal = balanceText.match(balanceRegex);
+        if (!matchBal) return log("❌ Could not extract balance");
 
-    if (!amountInput) return log("❌ Amount input not found");
+        const raw = matchBal[1].replace(/,/g, '');
+        const amount = parseInt(raw, 10);
+        log(`✅ Found balance: $${amount.toLocaleString()}`);
 
-    // Search rows containing the user's name and money balance
-    let balance = null;
-    const rows = [...document.querySelectorAll('div[class*="user-info-row"], tr')];
-    for (const row of rows) {
-        const text = row.textContent || '';
-        if (text.includes(targetName) && text.includes('$')) {
-            const match = text.match(/\$([\d,]+)/);
-            if (match) {
-                balance = match[1].replace(/,/g, '');
-                break;
-            }
+        const amountInput = await waitForInput('input.input-money');
+        if (!amountInput) return log("❌ Amount input not found");
+
+        amountInput.focus();
+        amountInput.value = amount.toString();
+        amountInput.dispatchEvent(new Event('input', { bubbles: true }));
+        log("✅ Amount filled");
+
+        if (amount > 50000000) {
+            const popup = document.createElement("div");
+            popup.innerText = `⚠️ $${amount.toLocaleString()} — OVERDRAW ALERT`;
+            popup.style.position = "fixed";
+            popup.style.bottom = "20px";
+            popup.style.left = "20px";
+            popup.style.background = "red";
+            popup.style.color = "white";
+            popup.style.padding = "10px";
+            popup.style.zIndex = "99999";
+            popup.style.fontSize = "18px";
+            popup.style.borderRadius = "8px";
+            document.body.appendChild(popup);
+            log("❗ Overdraw warning displayed");
         }
     }
 
-    if (!balance) return log("❌ Balance not found");
-
-    amountInput.focus();
-    amountInput.value = balance;
-    amountInput.dispatchEvent(new Event("input", { bubbles: true }));
-
-    log("✅ Filled balance:", balance);
+    window.addEventListener("load", () => setTimeout(autofill, 1500));
 })();
