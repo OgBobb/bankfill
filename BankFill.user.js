@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Faction Bank AutoFill (bobbot)
 // @namespace    http://tampermonkey.net/
-// @version      1.9
+// @version      2.0
 // @description  Auto-fills the faction money form for a user with balance checks
 // @author       OgBob
 // @license      MIT
@@ -95,7 +95,9 @@
         }
 
         el.dispatchEvent(new Event('change', { bubbles: true }));
-        await new Promise(r => setTimeout(r, 500)); // wait after typing
+        el.blur();
+        el.click();
+        await new Promise(r => setTimeout(r, 700));
         console.log(`[AutoFill] Finished simulating: ${text}`);
     }
 
@@ -123,7 +125,6 @@
             log(`✅ Found and clicking dropdown: ${dropdownItem.textContent.trim()}`);
             dropdownItem.click();
 
-            // ✅ Wait for updated balance from player header
             let currentBalance = null;
             for (let i = 0; i < 30; i++) {
                 const balanceEl = [...document.querySelectorAll('span.nowrap___Egae2')].find(
@@ -170,7 +171,7 @@
 
     if (window.location.hash.includes('name=')) {
         log('📦 Script triggered. URL hash:', window.location.hash);
-        setTimeout(autoFill, 800);
+        window.addEventListener('DOMContentLoaded', () => setTimeout(autoFill, 1500));
     } else {
         log('⏹️ Hash does not include `name=`, script will not run.');
     }
