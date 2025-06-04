@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Faction Bank AutoFill (bobbot)
 // @namespace    http://tampermonkey.net/
-// @version      2.2
+// @version      2.3
 // @description  Auto-fills the faction money form for a user with balance checks
 // @author       OgBob
 // @license      MIT
@@ -62,31 +62,29 @@
         throw new Error(`Timeout: ${selector}`);
     }
 
-    async function waitForDropdownItem(matcher, timeoutMs = 5000) {
+    async function waitForDropdownItem(matcher, timeoutMs = 7000) {
         const start = Date.now();
         while (Date.now() - start < timeoutMs) {
             const items = [...document.querySelectorAll('div.dropdown-content > button.item')];
             for (const item of items) {
                 const visible = item.offsetParent !== null;
-                const textMatch = item.textContent.trim().toLowerCase() === matcher.toLowerCase();
-                if (visible && textMatch) {
+                const matchText = item.textContent.trim().toLowerCase();
+                if (visible && matchText.includes(matcher.toLowerCase())) {
                     return item;
                 }
             }
-            await new Promise(res => setTimeout(res, 250));
+            await new Promise(res => setTimeout(res, 300));
         }
         return null;
     }
 
     async function simulateTyping(el, text) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const wrapper = el.closest('.inputWrapper') || el;
+        wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        wrapper.click();
+        await new Promise(r => setTimeout(r, 300));
+
         el.focus();
-
-        // 🟡 Click the wrapper to open dropdown
-        el.closest('div.inputWrapper___Egae2')?.click();
-        el.click();
-
-        await new Promise(r => setTimeout(r, 500));
         el.value = '';
         el.dispatchEvent(new InputEvent('input', { bubbles: true }));
 
@@ -99,7 +97,7 @@
         }
 
         el.dispatchEvent(new Event('change', { bubbles: true }));
-        await new Promise(r => setTimeout(r, 600));
+        await new Promise(r => setTimeout(r, 700));
     }
 
     async function autoFill() {
@@ -170,12 +168,12 @@
         }
     }
 
-    if (window.location.hash.includes('name=')) {
-        window.addEventListener('DOMContentLoaded', () => {
-            log('📦 DOM loaded, triggering autofill...');
-            setTimeout(autoFill, 1000);
-        });
-    } else {
-        log('⏹️ Hash does not include `name=`, script will not run.');
-    }
+    window.addEventListener('load', () => {
+        if (window.location.hash.includes('name=')) {
+            log('📦 Script triggered. URL hash:', window.location.hash);
+            setTimeout(autoFill, 1200);
+        } else {
+            log('⏹️ Hash does not include `name=`, script will not run.');
+        }
+    });
 })();
