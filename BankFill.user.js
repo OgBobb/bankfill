@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Faction Bank AutoFill (bobbot)
 // @namespace    http://tampermonkey.net/
-// @version      2.4.5
-// @description  Auto-fills the faction money form for a user with balance checks
+// @version      2.5
+// @description  Auto-fills the faction money form for a user, supporting both desktop and PDA skins
 // @author       OgBob
 // @license      MIT
 // @match        *://*.torn.com/factions.php*
@@ -52,7 +52,6 @@
      *   → { tab: "controls", name: "OgBob", amount: "1000000" }
      */
     function getParamsFromHash() {
-        // Strip leading “#/” or “#”
         const raw = window.location.hash.replace(/^#\/?/, '');
         const params = {};
         raw.replace(/([^=&]+)=([^&]+)/g, (_, k, v) => {
@@ -63,7 +62,7 @@
 
     /**
      * Waits up to `timeoutMs` ms for document.querySelector(selector) to return a non-null element.
-     * Throws if the timeout elapses without finding anything.
+     * Throws if timeout elapses without finding anything.
      */
     async function waitForSelector(selector, timeoutMs = DEFAULT_TIMEOUT) {
         const start = Date.now();
@@ -76,36 +75,28 @@
     }
 
     /**
-     * Looks for a visible dropdown item (TRYING MULTIPLE SELECTORS) whose textContent
-     * (lowercased) includes `matcher` (lowercased). Returns the first match, or null
-     * if none appear within `timeoutMs` ms.
+     * Looks for a visible dropdown item, trying multiple selectors:
+     *   1) div.dropdown-content > button.item          (desktop)
+     *   2) li.autocomplete-item                        (legacy UI)
+     *   3) div.ts-suggestion__item                     (newer UI)
+     *   4) li.ts-suggestion-item                       (alternative)
      *
-     * CURRENTLY TRIES:
-     *   1) div.dropdown-content > button.item
-     *   2) li.autocomplete-item
-     *   3) div.ts-suggestion__item
-     *
-     * If Torn’s HTML changes, inspect DevTools, find the exact class used for each suggestion
-     * in the “search player” dropdown, and add/replace accordingly here.
+     * Returns the first match whose textContent (lowercased) includes `matcher` (lowercased),
+     * or null if none appear within `timeoutMs`.
      */
     async function waitForDropdownItem(matcher, timeoutMs = 7000) {
         const start = Date.now();
         while (Date.now() - start < timeoutMs) {
-            // 1) Torn often uses <div class="dropdown-content"><button class="item">Name [ID]</button>…</div>
             const items1 = Array.from(document.querySelectorAll('div.dropdown-content > button.item'));
-
-            // 2) Sometimes it’s <li class="autocomplete-item"> on older UI
             const items2 = Array.from(document.querySelectorAll('li.autocomplete-item'));
-
-            // 3) Or <div class="ts-suggestion__item"> in newer UI
             const items3 = Array.from(document.querySelectorAll('div.ts-suggestion__item'));
+            const items4 = Array.from(document.querySelectorAll('li.ts-suggestion-item'));
 
-            const candidates = [...items1, ...items2, ...items3];
+            const candidates = [...items1, ...items2, ...items3, ...items4];
             for (const item of candidates) {
-                // Only consider those that are actually visible (offsetParent !== null)
                 if (item.offsetParent === null) continue;
                 const txt = item.textContent.trim().toLowerCase();
-                if (matcher && txt.includes(matcher.toLowerCase())) {
+                if (txt.includes(matcher.toLowerCase())) {
                     return item;
                 }
             }
@@ -115,16 +106,15 @@
     }
 
     /**
-     * “Types” the string `text` into the input `el` by:
-     *   1) Clicking its wrapper (if present) to focus
-     *   2) Clearing any existing value
-     *   3) For each character, appending it to el.value and dispatching keydown/input/keyup
-     *   4) Finally dispatching a “change” event
+     * Simulates “typing” into the input `el` by:
+     *   1) Clicking its wrapper (if present) to focus.
+     *   2) Clearing any existing value.
+     *   3) For each character, appending to el.value and dispatching keydown → input → keyup.
+     *   4) Finally dispatching a “change” event.
      *
-     * Waits a short delay between keystrokes so Torn’s autocomplete logic can fire.
+     * Waits small delays so Torn’s autocomplete logic can run.
      */
     async function simulateTyping(el, text) {
-        // Some Torn inputs are wrapped in a .inputWrapper; clicking that ensures focus
         const wrapper = el.closest('.inputWrapper') || el;
         wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
         wrapper.click();
@@ -142,19 +132,19 @@
             await new Promise((r) => setTimeout(r, 120));
         }
 
-        // Final “change” event once typing is done
         el.dispatchEvent(new Event('change', { bubbles: true }));
         await new Promise((r) => setTimeout(r, 700));
     }
 
     /**
-     * Main autofill routine:
+     * Main autofill routine supporting both desktop and PDA:
      *   1) Read `name` and `amount` from the URL hash.
-     *   2) Wait for Torn’s “searchAccount” input, then simulate typing the full `name`.
-     *   3) Wait for the autocomplete dropdown and click the matching entry.
-     *   4) Read “current balance” from the DOM and compare to `amount`.
-     *   5) If balance is sufficient, wait for the money‐input and set its value to `amount`.
-     *   6) Leaves you ready to press “GIVE MONEY.”
+     *   2) Attempt to find desktop input[name="searchAccount"]; if not found, find PDA input[name="userword"].
+     *   3) Simulate typing the full `name`.
+     *   4) Wait for the autocomplete dropdown and click the matching entry.
+     *   5) Read “current balance” from <span class="nowrap___Egae2">…</span> and compare to `amount`.
+     *   6) If balance is sufficient, fill the money‐input field (desktop: input.input-money; PDA fallback: input[name="amount"]).
+     *   7) Leaves you ready to click “GIVE MONEY.”
      */
     async function autoFill() {
         const { name, amount } = getParamsFromHash();
@@ -165,30 +155,34 @@
 
         log(`🚀 Starting autofill for name: ${name}, amount: ${amount}`);
         try {
-            // 1) Wait for the “search player” input (#other_name or input[name="searchAccount"])
-            //    In Torn’s current UI, it is: <input name="searchAccount" placeholder="search player...">
-            const input = await waitForSelector('input[name="searchAccount"]', 10000);
+            let input;
+            // 2) Try desktop “searchAccount” first:
+            try {
+                input = await waitForSelector('input[name="searchAccount"]', 8000);
+                log('✅ Found desktop input: searchAccount');
+            } catch {
+                // Fallback to PDA “userword”
+                input = await waitForSelector('input[name="userword"]', 8000);
+                log('✅ Found PDA input: userword');
+            }
 
-            log('✅ Found player input → simulating typing...');
+            // 3) Type the name into that input
+            log('🔤 Simulating typing into:', input);
             await simulateTyping(input, name);
 
-            // 2) Wait for the dropdown to populate, then pick the matching entry
+            // 4) Wait for and click the matching dropdown item
             log('🔍 Waiting for dropdown to populate…');
             const dropdownItem = await waitForDropdownItem(name, 7000);
             if (!dropdownItem) {
-                showWarning(`❌ Could not find dropdown match for ${name}`);
+                showWarning(`❌ Could not find dropdown match for "${name}"`);
                 return;
             }
+            log(`✅ Found dropdown item, clicking → ${dropdownItem.textContent.trim()}`);
+            dropdownItem.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 
-            log(`✅ Found and clicking dropdown: ${dropdownItem.textContent.trim()}`);
-            dropdownItem.dispatchEvent(
-                new MouseEvent('click', { bubbles: true, cancelable: true })
-            );
-
-            // 3) After clicking, wait for “current balance” to appear and parse it
+            // 5) After clicking, wait for “current balance” and parse it
             let currentBalance = null;
             for (let i = 0; i < 30; i++) {
-                // Torn’s “current balance” is often in a <span class="nowrap___Egae2">
                 const balanceEl = Array.from(
                     document.querySelectorAll('span.nowrap___Egae2')
                 ).find((el) => el.textContent.includes('current balance'));
@@ -204,50 +198,56 @@
             }
 
             if (currentBalance === null) {
-                log('⚠️ Could not read current balance after selecting player.');
+                log('⚠️ Could not read “current balance” after selecting player.');
                 showWarning('⚠️ Could not detect player balance.');
                 return;
             }
+            log(`💲 Detected current balance = $${currentBalance.toLocaleString()}`);
 
+            // 6) Compare requested amount
             const requestedAmount = parseInt(amount.replace(/,/g, ''), 10);
             if (requestedAmount > currentBalance) {
-                const msg = `⛔ STOPPED: Trying to send $${requestedAmount.toLocaleString()}, but only $${currentBalance.toLocaleString()} is available.`;
+                const msg = `⛔ STOPPED: Trying to send $${requestedAmount.toLocaleString()}, but only $${currentBalance.toLocaleString()} available.`;
                 log(msg);
                 showWarning(msg);
                 return;
             }
+            log(`✅ Balance OK – filling $${requestedAmount.toLocaleString()}`);
 
-            log(`💵 Balance OK: $${currentBalance.toLocaleString()} available`);
-
-            // 4) Wait for the money‐input field (currently <input class="input-money">) and fill it
-            const amountInput = await waitForSelector('input.input-money', 5000);
+            // 7) Fill the money‐input field:
+            //    Desktop uses <input class="input-money">; PDA might use <input name="amount">
+            let amountInput;
+            try {
+                amountInput = await waitForSelector('input.input-money', 5000);
+                log('✅ Found desktop money input: input.input-money');
+            } catch {
+                amountInput = await waitForSelector('input[name="amount"]', 5000);
+                log('✅ Found PDA money input: input[name="amount"]');
+            }
             amountInput.focus();
             amountInput.value = amount;
             amountInput.dispatchEvent(new Event('input', { bubbles: true }));
-
             log(`💰 Filled amount: $${amount}`);
-            // You can now click “GIVE MONEY” manually, or uncomment the next line to do it automatically:
-            // document.querySelector('#other_submit').click();
-        } catch (e) {
-            log('❌ AutoFill error:', e.message);
-            showWarning(`AutoFill failed: ${e.message}`);
+        } catch (err) {
+            log('❌ AutoFill error:', err.message);
+            showWarning(`AutoFill failed: ${err.message}`);
         }
     }
 
-    // Run autoFill() on initial page load if the hash contains “name=”
+    // Run on initial page load if the hash contains “name=”
     window.addEventListener('load', () => {
         if (window.location.hash.includes('name=')) {
-            log('📦 Script triggered. URL hash:', window.location.hash);
+            log('📦 Script triggered. URL hash =', window.location.hash);
             setTimeout(autoFill, 1200);
         } else {
-            log('⏹️ Hash does not include `name=`, script will not run.');
+            log('⏹️ URL hash does not include “name=”, script will not run.');
         }
     });
 
-    // Also re‐run if the hash ever changes (e.g. clicking a link that only updates the fragment)
+    // Also re‐run if the hash ever changes (e.g. clicking a link that updates the fragment)
     window.addEventListener('hashchange', () => {
         if (window.location.hash.includes('name=')) {
-            log('🔄 Hash changed. New hash:', window.location.hash);
+            log('🔄 Hash changed. New hash =', window.location.hash);
             setTimeout(autoFill, 1200);
         }
     });
