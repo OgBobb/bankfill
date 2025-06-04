@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Faction Bank AutoFill (bobbot)
 // @namespace    http://tampermonkey.net/
-// @version      1.8
+// @version      1.9
 // @description  Auto-fills the faction money form for a user with balance checks
 // @author       OgBob
 // @license      MIT
@@ -65,13 +65,15 @@
     async function waitForDropdownItem(matcher, timeoutMs = 5000) {
         const start = Date.now();
         while (Date.now() - start < timeoutMs) {
-            const items = [...document.querySelectorAll('button')];
-            const match = items.find(item =>
-                item.textContent.toLowerCase().includes(matcher.toLowerCase()) ||
-                (item.getAttribute('aria-label') || '').toLowerCase().includes(matcher.toLowerCase())
-            );
-            if (match) return match;
-            await new Promise(res => setTimeout(res, 300));
+            const items = [...document.querySelectorAll('div.dropdown-content > button.item')];
+            for (const item of items) {
+                const visible = item.offsetParent !== null;
+                const textMatch = item.textContent.trim().toLowerCase() === matcher.toLowerCase();
+                if (visible && textMatch) {
+                    return item;
+                }
+            }
+            await new Promise(res => setTimeout(res, 250));
         }
         return null;
     }
@@ -93,6 +95,7 @@
         }
 
         el.dispatchEvent(new Event('change', { bubbles: true }));
+        await new Promise(r => setTimeout(r, 500)); // wait after typing
         console.log(`[AutoFill] Finished simulating: ${text}`);
     }
 
