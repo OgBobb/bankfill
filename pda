@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         PDA Test Script
+// @name         Torn PDA Bank Test (OgBob)
 // @namespace    http://tampermonkey.net/
-// @version      1.1
-// @description  Test for PDA execution
+// @version      1.2.1
+// @description  Find and log all money/bank elements on PDA
 // @match        https://www.torn.com/factions.php*
 // @grant        none
 // ==/UserScript==
@@ -10,25 +10,60 @@
 (function () {
     'use strict';
 
-    // LOG TO CONSOLE
-    console.log('PDA SCRIPT: This should show up in the console.');
+    console.log('Torn PDA Bank script loaded!');
 
-    // ALERT FOR VISUAL PROOF
-    alert('Torn PDA test script is running!');
+    // Log all input elements
+    const inputs = document.querySelectorAll('input');
+    inputs.forEach((input, i) => {
+        console.log(`#${i}`, input, input.type, input.name, input.className, input.placeholder, input.value);
+    });
 
-    // CHANGE PAGE TO SEE IF SCRIPT HAS ACCESS
-    document.body.style.background = "#2228a0";
+    // Log all radio buttons
+    const radios = document.querySelectorAll('input[type="radio"]');
+    radios.forEach((radio, i) => {
+        console.log(`#RADIO${i}`, radio, radio.value, radio.className);
+    });
 
-    // Add an obvious element to the page
-    const d = document.createElement("div");
-    d.textContent = "PDA Script Loaded!";
-    d.style.position = "fixed";
-    d.style.top = "50px";
-    d.style.left = "50%";
-    d.style.transform = "translateX(-50%)";
-    d.style.background = "#00e676";
-    d.style.padding = "20px";
-    d.style.zIndex = 9999;
-    d.style.fontSize = "2em";
-    document.body.appendChild(d);
+    // Try to find the search box by class or placeholder
+    let nameInput =
+        document.querySelector('input[name="searchAccount"]') ||
+        document.querySelector('input[placeholder="search player..."]') ||
+        document.querySelector('input.userAutocomplete___xqlGt');
+
+    if (nameInput) {
+        // Highlight the box and focus
+        nameInput.style.background = "#ffd700";
+        nameInput.focus();
+
+        // Show green banner if found
+        const d = document.createElement("div");
+        d.textContent = "Found PDA player search box!";
+        d.style.position = "fixed";
+        d.style.top = "50px";
+        d.style.left = "50%";
+        d.style.transform = "translateX(-50%)";
+        d.style.background = "#00e676";
+        d.style.padding = "20px";
+        d.style.zIndex = 9999;
+        d.style.fontSize = "2em";
+        document.body.appendChild(d);
+
+        setTimeout(() => d.remove(), 3000);
+    } else {
+        // Show red banner if NOT found
+        const d = document.createElement("div");
+        d.textContent = "NO PDA player search box found!";
+        d.style.position = "fixed";
+        d.style.top = "50px";
+        d.style.left = "50%";
+        d.style.transform = "translateX(-50%)";
+        d.style.background = "#c0392b";
+        d.style.padding = "20px";
+        d.style.zIndex = 9999;
+        d.style.fontSize = "2em";
+        document.body.appendChild(d);
+
+        setTimeout(() => d.remove(), 3000);
+    }
+
 })();
