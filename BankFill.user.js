@@ -8,7 +8,10 @@
 // @match        *://*.torn.com/factions.php*
 // @grant        none
 // @run-at       document-idle
+// @downloadURL  https://raw.githubusercontent.com/OgBobb/bankfill/main/BankFill.user.js
+// @updateURL    https://raw.githubusercontent.com/OgBobb/bankfill/main/BankFill.meta.js
 // ==/UserScript==
+
 
 (function () {
     'use strict';
