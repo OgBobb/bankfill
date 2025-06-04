@@ -1,119 +1,34 @@
 // ==UserScript==
-// @name         Faction Bank AutoFill (PDA Only)
-// @namespace    http://torn.com/
-// @version      1.0
-// @description  Auto-fills faction bank name, amount, dropdown and checks balance in Torn PDA
-// @author       OgBob
+// @name         PDA Test Script
+// @namespace    http://tampermonkey.net/
+// @version      1.1
+// @description  Test for PDA execution
 // @match        https://www.torn.com/factions.php*
+// @grant        none
 // ==/UserScript==
 
 (function () {
-    // Only run on URLs with #/tab=controls&name=...&amount=...
-    if (!location.hash.includes('tab=controls') || !location.hash.includes('name=') || !location.hash.includes('amount=')) return;
+    'use strict';
 
-    // Parse hash params
-    const qs = location.hash.split('?')[1] || '';
-    const params = {};
-    for (const part of qs.split('&')) {
-        const [key, val] = part.split('=');
-        if (key && val) params[key] = decodeURIComponent(val);
-    }
-    const targetName = params['name'];
-    const targetAmount = parseInt(params['amount'], 10);
+    // LOG TO CONSOLE
+    console.log('PDA SCRIPT: This should show up in the console.');
 
-    if (!targetName || !targetAmount || isNaN(targetAmount)) return;
+    // ALERT FOR VISUAL PROOF
+    alert('Torn PDA test script is running!');
 
-    function dispatchInput(el) {
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-    }
+    // CHANGE PAGE TO SEE IF SCRIPT HAS ACCESS
+    document.body.style.background = "#2228a0";
 
-    function showPopup(msg) {
-        let popup = document.getElementById('bobbot-bankfill-popup');
-        if (!popup) {
-            popup = document.createElement('div');
-            popup.id = 'bobbot-bankfill-popup';
-            popup.style.cssText = 'position:fixed;top:30px;left:50%;transform:translateX(-50%);background:#c0392b;color:#fff;padding:15px 30px;border-radius:8px;font-size:1.3em;z-index:9999;box-shadow:0 0 12px #000c;opacity:0.97;';
-            document.body.appendChild(popup);
-        }
-        popup.textContent = msg;
-        popup.style.display = '';
-        setTimeout(() => { popup.style.display = 'none'; }, 3700);
-    }
-
-    // PDA selectors from your debug dump:
-    const pdaSelectors = {
-        userInput: 'input.userAutocomplete___xqlGt, input[name="searchAccount"]',
-        addRadio: 'input[type="radio"][value="addToBalance"]',
-        giveRadio: 'input[type="radio"][value="giveMoney"]',
-        amountInput: 'input.input-money',
-        submitBtn: 'button.wai-btn'
-    };
-
-    function tryAutoFillPDA() {
-        // 1. Username input
-        const nameInput = document.querySelector(pdaSelectors.userInput);
-        if (!nameInput) return setTimeout(tryAutoFillPDA, 300);
-
-        // 2. Clear & type name
-        nameInput.focus();
-        nameInput.value = '';
-        dispatchInput(nameInput);
-
-        setTimeout(() => {
-            nameInput.value = targetName;
-            dispatchInput(nameInput);
-
-            // 3. Wait for dropdown and click first suggestion
-            let tries = 0;
-            const dropdownInterval = setInterval(() => {
-                tries++;
-                let suggestion = Array.from(document.querySelectorAll('.userAutocomplete___xqlGt div'))
-                    .find(el => el.textContent && el.textContent.toLowerCase().includes(targetName.toLowerCase()));
-                if (suggestion) {
-                    suggestion.click();
-                    clearInterval(dropdownInterval);
-
-                    // 4. Pick "Add to balance" radio
-                    setTimeout(() => {
-                        const addRadio = document.querySelector(pdaSelectors.addRadio);
-                        if (addRadio && !addRadio.checked) addRadio.click();
-
-                        // 5. Fill amount
-                        setTimeout(() => {
-                            const amtInput = document.querySelector(pdaSelectors.amountInput);
-                            if (!amtInput) return showPopup('No amount field found!');
-                            amtInput.focus();
-                            amtInput.value = targetAmount;
-                            dispatchInput(amtInput);
-
-                            // 6. Get balance
-                            setTimeout(() => {
-                                // Scan <span> or <p> for "current balance is"
-                                let balance = 0;
-                                let balEl = Array.from(document.querySelectorAll('span, p')).find(e =>
-                                    e.textContent && e.textContent.toLowerCase().includes("current balance is"));
-                                if (balEl) {
-                                    let match = balEl.textContent.match(/\$([\d,]+)/);
-                                    if (match) balance = parseInt(match[1].replace(/,/g, ''), 10);
-                                }
-                                if (balance && balance < targetAmount) {
-                                    showPopup(`Not enough balance! You have $${balance.toLocaleString()} (need $${targetAmount.toLocaleString()})`);
-                                    return;
-                                }
-                                // else optionally auto-click submit:
-                                // document.querySelector(pdaSelectors.submitBtn)?.click();
-                                showPopup('Fields auto-filled!');
-                            }, 250);
-                        }, 180);
-                    }, 150);
-                } else if (tries > 30) {
-                    clearInterval(dropdownInterval);
-                    showPopup('Failed to select name in dropdown.');
-                }
-            }, 120);
-        }, 150);
-    }
-
-    setTimeout(tryAutoFillPDA, 400);
+    // Add an obvious element to the page
+    const d = document.createElement("div");
+    d.textContent = "PDA Script Loaded!";
+    d.style.position = "fixed";
+    d.style.top = "50px";
+    d.style.left = "50%";
+    d.style.transform = "translateX(-50%)";
+    d.style.background = "#00e676";
+    d.style.padding = "20px";
+    d.style.zIndex = 9999;
+    d.style.fontSize = "2em";
+    document.body.appendChild(d);
 })();
