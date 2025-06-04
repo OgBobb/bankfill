@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Faction Bank AutoFill (bobbot)
 // @namespace    http://tampermonkey.net/
-// @version      2.1
+// @version      2.2
 // @description  Auto-fills the faction money form for a user with balance checks
 // @author       OgBob
 // @license      MIT
@@ -81,9 +81,12 @@
     async function simulateTyping(el, text) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         el.focus();
-        el.click();
-        await new Promise(r => setTimeout(r, 300));
 
+        // 🟡 Click the wrapper to open dropdown
+        el.closest('div.inputWrapper___Egae2')?.click();
+        el.click();
+
+        await new Promise(r => setTimeout(r, 500));
         el.value = '';
         el.dispatchEvent(new InputEvent('input', { bubbles: true }));
 
@@ -92,11 +95,11 @@
             el.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
             el.dispatchEvent(new InputEvent('input', { bubbles: true }));
             el.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
-            await new Promise(r => setTimeout(r, 120));
+            await new Promise(r => setTimeout(r, 100));
         }
 
         el.dispatchEvent(new Event('change', { bubbles: true }));
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(r => setTimeout(r, 600));
     }
 
     async function autoFill() {
@@ -168,8 +171,10 @@
     }
 
     if (window.location.hash.includes('name=')) {
-        log('📦 Script triggered. URL hash:', window.location.hash);
-        setTimeout(autoFill, 1200);
+        window.addEventListener('DOMContentLoaded', () => {
+            log('📦 DOM loaded, triggering autofill...');
+            setTimeout(autoFill, 1000);
+        });
     } else {
         log('⏹️ Hash does not include `name=`, script will not run.');
     }
