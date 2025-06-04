@@ -1,69 +1,70 @@
 // ==UserScript==
-// @name         Torn PDA Bank Test (OgBob)
+// @name         Faction Bank AutoFill (Desktop + PDA)
 // @namespace    http://tampermonkey.net/
-// @version      1.2.1
-// @description  Find and log all money/bank elements on PDA
+// @version      1.2.2
+// @description  Auto-fills the faction money form for a user with balance checks (works on desktop + PDA)
 // @match        https://www.torn.com/factions.php*
 // @grant        none
+// @license      MIT
 // ==/UserScript==
 
-(function () {
+(async function () {
     'use strict';
 
-    console.log('Torn PDA Bank script loaded!');
+    const log = (...args) => console.log('[AutoFill]', ...args);
+    const sleep = ms => new Promise(res => setTimeout(res, ms));
 
-    // Log all input elements
-    const inputs = document.querySelectorAll('input');
-    inputs.forEach((input, i) => {
-        console.log(`#${i}`, input, input.type, input.name, input.className, input.placeholder, input.value);
-    });
-
-    // Log all radio buttons
-    const radios = document.querySelectorAll('input[type="radio"]');
-    radios.forEach((radio, i) => {
-        console.log(`#RADIO${i}`, radio, radio.value, radio.className);
-    });
-
-    // Try to find the search box by class or placeholder
-    let nameInput =
-        document.querySelector('input[name="searchAccount"]') ||
-        document.querySelector('input[placeholder="search player..."]') ||
-        document.querySelector('input.userAutocomplete___xqlGt');
-
-    if (nameInput) {
-        // Highlight the box and focus
-        nameInput.style.background = "#ffd700";
-        nameInput.focus();
-
-        // Show green banner if found
-        const d = document.createElement("div");
-        d.textContent = "Found PDA player search box!";
-        d.style.position = "fixed";
-        d.style.top = "50px";
-        d.style.left = "50%";
-        d.style.transform = "translateX(-50%)";
-        d.style.background = "#00e676";
-        d.style.padding = "20px";
-        d.style.zIndex = 9999;
-        d.style.fontSize = "2em";
-        document.body.appendChild(d);
-
-        setTimeout(() => d.remove(), 3000);
-    } else {
-        // Show red banner if NOT found
-        const d = document.createElement("div");
-        d.textContent = "NO PDA player search box found!";
-        d.style.position = "fixed";
-        d.style.top = "50px";
-        d.style.left = "50%";
-        d.style.transform = "translateX(-50%)";
-        d.style.background = "#c0392b";
-        d.style.padding = "20px";
-        d.style.zIndex = 9999;
-        d.style.fontSize = "2em";
-        document.body.appendChild(d);
-
-        setTimeout(() => d.remove(), 3000);
+    async function waitForInput(selectors, tries = 20) {
+        for (let i = 0; i < tries; i++) {
+            for (const sel of selectors) {
+                const el = document.querySelector(sel);
+                if (el) return el;
+            }
+            await sleep(300);
+        }
+        return null;
     }
 
+    const targetName = "OgBob";
+    log("🚀 Starting with name:", targetName);
+
+    const nameInput = await waitForInput([
+        'input[name="user"]',
+        'input[name="searchAccount"]',
+        'input.playername'
+    ]);
+
+    const amountInput = await waitForInput([
+        'input[class*="input-money"]',
+        'input[type="text"].money' // fallback
+    ]);
+
+    if (!nameInput || !amountInput) {
+        log("❌ Missing inputs");
+        return;
+    }
+
+    // Find matching text content with balance
+    const all = [...document.querySelectorAll("*")];
+    const match = all.find(el => el.textContent?.includes(`${targetName}\`s current balance is $`));
+    const found = match?.textContent?.match(/\$([\d,]+)/);
+    const balance = found?.[1]?.replace(/,/g, '');
+
+    if (!balance) {
+        log("❌ Could not locate balance");
+        return;
+    }
+
+    // Fill player name
+    nameInput.focus();
+    nameInput.value = targetName;
+    nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+    log("✅ Filled name input");
+
+    // Fill balance
+    await sleep(100); // slight delay for PDA input handling
+    amountInput.focus();
+    amountInput.value = balance;
+    amountInput.dispatchEvent(new Event("input", { bubbles: true }));
+    log("✅ Filled amount input:", balance);
 })();
