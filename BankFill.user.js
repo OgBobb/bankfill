@@ -1,162 +1,206 @@
 // ==UserScript==
 // @name         Faction Bank AutoFill (bobbot)
 // @namespace    http://tampermonkey.net/
-// @version      3.4
-// @description  Auto-fills the faction money form for a user with balance checks (PC+PDA)
+// @version      3.4.1
+// @description  Auto-fills the faction money form for a user, supporting both desktop and PDA skins
 // @author       OgBob
 // @license      MIT
-// @match        https://www.torn.com/factions.php*
+// @match        *://*.torn.com/factions.php*
 // @grant        none
+// @run-at       document-idle
 // @downloadURL  https://raw.githubusercontent.com/OgBobb/bankfill/main/BankFill.user.js
 // @updateURL    https://raw.githubusercontent.com/OgBobb/bankfill/main/BankFill.meta.js
 // ==/UserScript==
 
+
 (function () {
     'use strict';
 
-    // Only run on URLs with a ?#/tab=controls&name=...&amount=...
-    if (!location.hash.includes('tab=controls') || !location.hash.includes('name=') || !location.hash.includes('amount=')) return;
+    const DEFAULT_TIMEOUT = 15000;
 
-    const qs = location.hash.split('?')[1] || '';
-    const params = {};
-    for (const part of qs.split('&')) {
-        const [key, val] = part.split('=');
-        if (key && val) params[key] = decodeURIComponent(val);
-    }
-    const targetName = params['name'];
-    const targetAmount = parseInt(params['amount'], 10);
-
-    if (!targetName || !targetAmount || isNaN(targetAmount)) return;
-
-    function dispatchInput(el) {
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
+    function log(...args) {
+        console.log('[AutoFill]', ...args);
     }
 
-    function showPopup(msg) {
-        let popup = document.getElementById('bobbot-bankfill-popup');
-        if (!popup) {
-            popup = document.createElement('div');
-            popup.id = 'bobbot-bankfill-popup';
-            popup.style.cssText = 'position:fixed;top:30px;left:50%;transform:translateX(-50%);background:#c0392b;color:#fff;padding:15px 30px;border-radius:8px;font-size:1.3em;z-index:9999;box-shadow:0 0 12px #000c;opacity:0.97;';
-            document.body.appendChild(popup);
+    function showWarning(message) {
+        const existing = document.getElementById('autofill-warning');
+        if (existing) existing.remove();
+
+        const warn = document.createElement('div');
+        warn.id = 'autofill-warning';
+        warn.textContent = message;
+        warn.style.position = 'fixed';
+        warn.style.top = '20px';
+        warn.style.left = '50%';
+        warn.style.transform = 'translateX(-50%)';
+        warn.style.background = '#ff4444';
+        warn.style.color = 'white';
+        warn.style.padding = '10px 20px';
+        warn.style.fontWeight = 'bold';
+        warn.style.zIndex = '9999';
+        warn.style.borderRadius = '6px';
+        warn.style.boxShadow = '0 0 10px black';
+        warn.style.cursor = 'pointer';
+        warn.title = 'Click to dismiss';
+        warn.onclick = () => warn.remove();
+
+        document.body.appendChild(warn);
+    }
+
+    function getParamsFromHash() {
+        const raw = window.location.hash.replace(/^#\/?/, '');
+        const params = {};
+        raw.replace(/([^=&]+)=([^&]+)/g, (_, k, v) => {
+            params[k] = decodeURIComponent(v);
+        });
+        return params;
+    }
+
+    async function waitForSelector(selector, timeoutMs = DEFAULT_TIMEOUT) {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+            const el = document.querySelector(selector);
+            if (el) return el;
+            await new Promise((r) => setTimeout(r, 200));
         }
-        popup.textContent = msg;
-        popup.style.display = '';
-        setTimeout(() => { popup.style.display = 'none'; }, 3700);
+        throw new Error(`Timeout waiting for selector: ${selector}`);
     }
 
-    // Helper to wait for an element to appear
-    function waitForSelector(selectors, maxTries=25, interval=150) {
-        return new Promise(resolve => {
-            let tries = 0;
-            const loop = () => {
-                let el = null;
-                for (const sel of selectors) {
-                    el = document.querySelector(sel);
-                    if (el) break;
+    async function waitForDropdownItem(matcher, timeoutMs = 7000) {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+            const items1 = Array.from(document.querySelectorAll('div.dropdown-content > button.item'));
+            const items2 = Array.from(document.querySelectorAll('li.autocomplete-item'));
+            const items3 = Array.from(document.querySelectorAll('div.ts-suggestion__item'));
+            const items4 = Array.from(document.querySelectorAll('li.ts-suggestion-item'));
+            const candidates = [...items1, ...items2, ...items3, ...items4];
+            for (const item of candidates) {
+                if (item.offsetParent === null) continue;
+                const txt = item.textContent.trim().toLowerCase();
+                if (txt.includes(matcher.toLowerCase())) {
+                    return item;
                 }
-                if (el) return resolve(el);
-                if (++tries > maxTries) return resolve(null);
-                setTimeout(loop, interval);
-            };
-            loop();
-        });
+            }
+            await new Promise((r) => setTimeout(r, 300));
+        }
+        return null;
     }
 
-    // Helper to select from dropdown
-    function selectUserDropdown(name) {
-        return new Promise((resolve) => {
-            let tries = 0;
-            const timer = setInterval(() => {
-                tries++;
-                // For both PC and PDA, look for divs/buttons containing the name
-                let candidates = Array.from(document.querySelectorAll('div[role="option"], .autocompleteItem, .userAutocomplete___xqlGt div'))
-                    .filter(el => el.textContent && el.textContent.toLowerCase().includes(name.toLowerCase()));
-                if (candidates.length > 0) {
-                    candidates[0].click();
-                    clearInterval(timer);
-                    setTimeout(resolve, 250); // let React update
-                } else if (tries > 25) {
-                    clearInterval(timer);
-                    showPopup('Failed to select the name in dropdown.');
-                    resolve();
-                }
-            }, 100);
-        });
+    async function simulateTyping(el, text) {
+        const wrapper = el.closest('.inputWrapper') || el;
+        wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        wrapper.click();
+        await new Promise((r) => setTimeout(r, 300));
+
+        el.focus();
+        el.value = '';
+        el.dispatchEvent(new InputEvent('input', { bubbles: true }));
+
+        for (const char of text) {
+            el.value += char;
+            el.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
+            el.dispatchEvent(new InputEvent('input', { bubbles: true }));
+            el.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
+            await new Promise((r) => setTimeout(r, 120));
+        }
+
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        await new Promise((r) => setTimeout(r, 700));
     }
 
-    async function tryAutoFill() {
-        // Selectors for all Torn variants (PC and PDA)
-        const nameSelectors = [
-            'input[name="user"]',
-            'input[name="searchAccount"]',
-            'input.userAutocomplete___xqlGt',
-            '.userAutocomplete___xqlGt input',
-            'input[placeholder="search player..."]'
-        ];
-        const moneySelectors = [
-            'input.input-money',
-            'input[name="amount"]'
-        ];
+    async function autoFill() {
+        const { name, amount } = getParamsFromHash();
+        if (!name || !amount) {
+            log('❌ Missing name or amount in URL hash.');
+            return;
+        }
 
-        const nameInput = await waitForSelector(nameSelectors, 40, 150);
-        if (!nameInput) return showPopup('Name input not found!');
-        nameInput.focus();
-        nameInput.value = '';
-        dispatchInput(nameInput);
+        log(`🚀 Starting autofill for name: ${name}, amount: ${amount}`);
+        try {
+            let input;
+            try {
+                input = await waitForSelector('input[name="searchAccount"]', 8000);
+                log('✅ Found desktop input: searchAccount');
+            } catch {
+                input = await waitForSelector('input[name="userword"]', 8000);
+                log('✅ Found PDA input: userword');
+            }
 
-        setTimeout(async () => {
-            nameInput.value = targetName;
-            dispatchInput(nameInput);
+            log('🔤 Simulating typing into:', input);
+            await simulateTyping(input, name);
 
-            // Wait for and click dropdown suggestion
-            await selectUserDropdown(targetName);
+            log('🔍 Waiting for dropdown to populate…');
+            const dropdownItem = await waitForDropdownItem(name, 7000);
+            if (!dropdownItem) {
+                showWarning(`❌ Could not find dropdown match for "${name}"`);
+                return;
+            }
+            log(`✅ Found dropdown item, clicking → ${dropdownItem.textContent.trim()}`);
+            dropdownItem.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 
-            setTimeout(async () => {
-                const moneyInput = await waitForSelector(moneySelectors, 20, 120);
-                if (!moneyInput) return showPopup('Could not find amount field!');
-
-                // Try to click the "Add to balance" radio
-                let addRadio = document.querySelector('input[type="radio"][value="addToBalance"]') ||
-                               document.querySelector('input[type="radio"][value="add"]');
-                if (!addRadio) {
-                    // fallback: 2nd radio button
-                    let radios = document.querySelectorAll('input[type="radio"]');
-                    if (radios.length >= 2) addRadio = radios[1];
-                }
-                if (addRadio && !addRadio.checked) addRadio.click();
-
-                // Set the amount
-                moneyInput.focus();
-                moneyInput.value = targetAmount;
-                dispatchInput(moneyInput);
-
-                // --- Balance check ---
-                // Get *highest* current balance found
-                let balanceVal = 0;
-                Array.from(document.querySelectorAll('span, p')).forEach(e => {
-                    if (e.textContent && e.textContent.includes('current balance is')) {
-                        let match = e.textContent.match(/\$([\d,]+)/);
-                        if (match) {
-                            let bal = parseInt(match[1].replace(/,/g, ''), 10);
-                            if (bal > balanceVal) balanceVal = bal;
-                        }
+            let currentBalance = null;
+            for (let i = 0; i < 30; i++) {
+                const balanceEl = Array.from(document.querySelectorAll('span, p')).find(
+                    el => el.textContent.includes("current balance") && /\$\d/.test(el.textContent)
+                );
+                if (balanceEl) {
+                    const match = balanceEl.textContent.match(/\$([\d,]+)/);
+                    if (match) {
+                        currentBalance = parseInt(match[1].replace(/,/g, ''), 10);
+                        break;
                     }
-                });
-
-                if (balanceVal < targetAmount) {
-                    showPopup(`Not enough balance! You have $${balanceVal.toLocaleString()} (need $${targetAmount.toLocaleString()})`);
-                    return;
                 }
+                await new Promise((r) => setTimeout(r, 300));
+            }
 
-                // You can auto-submit by uncommenting the following lines:
-                // let giveBtn = document.querySelector('button.wai-btn, button[type="submit"], .moneyActionBtn');
-                // if (giveBtn) giveBtn.click();
+            if (currentBalance === null) {
+                log('⚠️ Could not read “current balance” after selecting player.');
+                showWarning('⚠️ Could not detect player balance.');
+                return;
+            }
+            log(`💲 Detected current balance = $${currentBalance.toLocaleString()}`);
 
-            }, 200);
-        }, 120);
+            const requestedAmount = parseInt(amount.replace(/,/g, ''), 10);
+            if (!requestedAmount || requestedAmount > currentBalance) {
+                const msg = `⛔ STOPPED: Trying to send $${amount}, but only $${currentBalance.toLocaleString()} available.`;
+                log(msg);
+                showWarning(msg);
+                return;
+            }
+            log(`✅ Balance OK – filling $${requestedAmount.toLocaleString()}`);
+
+            let amountInput;
+            try {
+                amountInput = await waitForSelector('input.input-money', 5000);
+                log('✅ Found desktop money input: input.input-money');
+            } catch {
+                amountInput = await waitForSelector('input[name="amount"]', 5000);
+                log('✅ Found PDA money input: input[name="amount"]');
+            }
+
+            amountInput.focus();
+            amountInput.value = amount;
+            amountInput.dispatchEvent(new Event('input', { bubbles: true }));
+            log(`💰 Filled amount: $${amount}`);
+        } catch (err) {
+            log('❌ AutoFill error:', err.message);
+            showWarning(`AutoFill failed: ${err.message}`);
+        }
     }
 
-    setTimeout(tryAutoFill, 700);
+    window.addEventListener('load', () => {
+        if (window.location.hash.includes('name=')) {
+            log('📦 Script triggered. URL hash =', window.location.hash);
+            setTimeout(autoFill, 1200);
+        } else {
+            log('⏹️ URL hash does not include “name=”, script will not run.');
+        }
+    });
+
+    window.addEventListener('hashchange', () => {
+        if (window.location.hash.includes('name=')) {
+            log('🔄 Hash changed. New hash =', window.location.hash);
+            setTimeout(autoFill, 1200);
+        }
+    });
 })();
