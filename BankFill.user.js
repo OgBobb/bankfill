@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Faction Bank AutoFill (bobbot)
 // @namespace    http://tampermonkey.net/
-// @version      3.4.1
+// @version      3.5.0
 // @description  Auto-fills the faction money form for a user, supporting both desktop and PDA skins
 // @author       OgBob
 // @license      MIT
@@ -11,7 +11,6 @@
 // @downloadURL  https://raw.githubusercontent.com/OgBobb/bankfill/main/BankFill.user.js
 // @updateURL    https://raw.githubusercontent.com/OgBobb/bankfill/main/BankFill.meta.js
 // ==/UserScript==
-
 
 (function () {
     'use strict';
@@ -96,6 +95,9 @@
         el.value = '';
         el.dispatchEvent(new InputEvent('input', { bubbles: true }));
 
+        // 🔧 wait before first keystroke so Torn doesn't miss it
+        await new Promise(r => setTimeout(r, 250));
+
         for (const char of text) {
             el.value += char;
             el.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
@@ -106,6 +108,19 @@
 
         el.dispatchEvent(new Event('change', { bubbles: true }));
         await new Promise((r) => setTimeout(r, 700));
+    }
+
+    async function detectBalance(maxTries = 30, delay = 300) {
+        for (let i = 0; i < maxTries; i++) {
+            const el = [...document.querySelectorAll('span, p')]
+                .find(node => /current balance/i.test(node.textContent) && /\$\d/.test(node.textContent));
+            if (el) {
+                const num = el.textContent.replace(/[^\d]/g, '');
+                if (num) return parseInt(num, 10);
+            }
+            await new Promise(r => setTimeout(r, delay));
+        }
+        return null;
     }
 
     async function autoFill() {
@@ -138,23 +153,9 @@
             log(`✅ Found dropdown item, clicking → ${dropdownItem.textContent.trim()}`);
             dropdownItem.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 
-            let currentBalance = null;
-            for (let i = 0; i < 30; i++) {
-                const balanceEl = Array.from(document.querySelectorAll('span, p')).find(
-                    el => el.textContent.includes("current balance") && /\$\d/.test(el.textContent)
-                );
-                if (balanceEl) {
-                    const match = balanceEl.textContent.match(/\$([\d,]+)/);
-                    if (match) {
-                        currentBalance = parseInt(match[1].replace(/,/g, ''), 10);
-                        break;
-                    }
-                }
-                await new Promise((r) => setTimeout(r, 300));
-            }
-
-            if (currentBalance === null) {
-                log('⚠️ Could not read “current balance” after selecting player.');
+            const currentBalance = await detectBalance();
+            if (currentBalance == null) {
+                log('⚠️ Could not detect player balance.');
                 showWarning('⚠️ Could not detect player balance.');
                 return;
             }
@@ -188,10 +189,17 @@
         }
     }
 
+    // 🔁 debounce wrapper
+    let autofillTimer;
+    function triggerAutoFill() {
+        clearTimeout(autofillTimer);
+        autofillTimer = setTimeout(autoFill, 2000); // 2s wait to let Torn fully render
+    }
+
     window.addEventListener('load', () => {
         if (window.location.hash.includes('name=')) {
             log('📦 Script triggered. URL hash =', window.location.hash);
-            setTimeout(autoFill, 1200);
+            triggerAutoFill();
         } else {
             log('⏹️ URL hash does not include “name=”, script will not run.');
         }
@@ -200,7 +208,7 @@
     window.addEventListener('hashchange', () => {
         if (window.location.hash.includes('name=')) {
             log('🔄 Hash changed. New hash =', window.location.hash);
-            setTimeout(autoFill, 1200);
+            triggerAutoFill();
         }
     });
 })();
